@@ -1,0 +1,109 @@
+name: Dispatcher retention evidence
+on:
+  push:
+    branches: [evidence/dispatcher-retention-184256]
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: baseline
+            repository: openclaw/openclaw
+            revision: a53b4975e99d13a4725c64f2254ab857fb574343
+          - variant: candidate
+            repository: devinhuang2001/openclaw
+            revision: d03f658ff64b41859d8cbc4309800cc2cf494f00
+    env:
+      OPENCLAW_VITEST_RUNTIME: node
+      OPENCLAW_FORMAT_TOOL: oxfmt
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.revision }}
+          path: sut
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+          run_install: false
+      - name: Runtime identity
+        working-directory: sut
+        run: |
+          mkdir -p ../evidence
+          node --version | tee ../evidence/node-version.txt
+          pnpm --version | tee ../evidence/pnpm-version.txt
+          git rev-parse HEAD | tee ../evidence/source-sha.txt
+          df -h .
+      - name: Install pinned dependencies
+        working-directory: sut
+        run: pnpm install --frozen-lockfile > ../evidence/install.log 2>&1
+      - name: Build shipped runtime
+        working-directory: sut
+        run: node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime > ../evidence/build.log 2>&1
+      - name: Isolated shipped Gateway retention proof
+        run: node .evidence-harness/run-gateway.mjs sut evidence/gateway ${{ matrix.variant }}
+      - name: Analyze synthetic heap retainer graph
+        if: always()
+        run: |
+          if test -f evidence/gateway/sample-1/gateway.heapsnapshot; then
+            node .evidence-harness/analyze-heap.mjs evidence/gateway/sample-1/gateway.heapsnapshot evidence/heap-analysis.json
+          fi
+          cp .evidence-harness/acceptance-rule.md evidence/acceptance-rule.md
+      - name: Focused supported-runtime tests
+        if: matrix.variant == 'candidate' && always()
+        working-directory: sut
+        run: |
+          pnpm test src/auto-reply/dispatch.test.ts src/auto-reply/dispatch-dispatcher.test.ts src/auto-reply/reply/reply-settlement-observers.test.ts src/gateway/server-restart-deferral.test.ts src/gateway/server-close.test.ts --maxWorkers=1 > ../evidence/tests.log 2>&1
+      - name: Targeted check plan and checks
+        if: matrix.variant == 'candidate' && always()
+        working-directory: sut
+        run: |
+          node scripts/check-changed.mjs --dry-run -- src/auto-reply/reply/dispatcher-registry.ts src/auto-reply/reply/reply-dispatcher.ts src/auto-reply/reply/reply-settlement-observers.test.ts src/gateway/server-close.test.ts > ../evidence/check-plan.log 2>&1
+          node scripts/check-changed.mjs -- src/auto-reply/reply/dispatcher-registry.ts src/auto-reply/reply/reply-dispatcher.ts src/auto-reply/reply/reply-settlement-observers.test.ts src/gateway/server-close.test.ts > ../evidence/checks.log 2>&1
+      - name: Sanitize text evidence
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          for file in pathlib.Path('evidence').rglob('*'):
+              if file.suffix not in {'.log', '.txt', '.json'}:
+                  continue
+              text = file.read_text(errors='replace')
+              text = re.sub(r'\b\d{1,3}(?:\.\d{1,3}){3}\b', '[ip-redacted]', text)
+              text = re.sub(r'\b(?:sk-|gh[opsu]_)[A-Za-z0-9_-]{12,}\b', '[credential-redacted]', text)
+              file.write_text(text)
+          PY
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retention-${{ matrix.variant }}
+          path: |
+            evidence/**
+            !evidence/**/*.heapsnapshot
+          retention-days: 7
+      - name: Compress synthetic raw heap
+        if: always()
+        run: |
+          if test -f evidence/gateway/sample-1/gateway.heapsnapshot; then gzip evidence/gateway/sample-1/gateway.heapsnapshot; fi
+      - name: Upload temporary raw heap for local analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retention-raw-${{ matrix.variant }}
+          path: evidence/**/*.heapsnapshot.gz
+          retention-days: 7
