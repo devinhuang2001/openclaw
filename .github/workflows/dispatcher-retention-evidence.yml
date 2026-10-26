@@ -2,6 +2,8 @@ name: Dispatcher retention evidence
 on:
   push:
     branches: [evidence/dispatcher-retention-184256]
+    # Results publication and the separate final-head check lane reuse this proof.
+    paths: [".evidence-harness/**"]
 permissions:
   contents: read
 jobs:

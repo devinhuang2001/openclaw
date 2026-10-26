@@ -1,0 +1,82 @@
+name: Dispatcher retention final-head checks
+on:
+  push:
+    branches: [evidence/dispatcher-retention-184256]
+    paths: [".github/workflows/dispatcher-retention-final-checks.yml"]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      OPENCLAW_VITEST_RUNTIME: node
+      OPENCLAW_FORMAT_TOOL: oxfmt
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 91fcb5bb65a2029afa5c12a1a77dd7f95c98f139
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Bind final source and production hashes
+        run: |
+          mkdir -p .artifacts
+          node --version > .artifacts/retention-final-node.txt
+          pnpm --version > .artifacts/retention-final-pnpm.txt
+          git rev-parse HEAD > .artifacts/retention-final-sha.txt
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          before = 'd03f658ff64b41859d8cbc4309800cc2cf494f00'
+          after = '91fcb5bb65a2029afa5c12a1a77dd7f95c98f139'
+          changed = subprocess.check_output(['git', 'diff', '--name-only', before, after], text=True).splitlines()
+          assert changed == ['src/auto-reply/reply/reply-settlement-observers.test.ts'], changed
+          paths = ['src/auto-reply/reply/dispatcher-registry.ts', 'src/auto-reply/reply/reply-dispatcher.ts']
+          hashes = {}
+          for file in paths:
+              hashes[file] = {}
+              for ref in [before, after]:
+                  raw = subprocess.check_output(['git', 'show', ref + ':' + file])
+                  hashes[file][ref] = {
+                      'sha256': hashlib.sha256(raw).hexdigest(),
+                      'gitBlob': subprocess.check_output(['git', 'rev-parse', ref + ':' + file], text=True).strip(),
+                  }
+              assert hashes[file][before] == hashes[file][after]
+          pathlib.Path('.artifacts/retention-final-production-hashes.json').write_text(json.dumps(hashes, indent=2))
+          PY
+      - name: Install pinned dependencies
+        id: install
+        run: pnpm install --frozen-lockfile > .artifacts/retention-final-install.log 2>&1
+      - name: Final-head focused tests
+        run: |
+          pnpm test src/auto-reply/dispatch.test.ts src/auto-reply/dispatch-dispatcher.test.ts src/auto-reply/reply/reply-settlement-observers.test.ts src/gateway/server-restart-deferral.test.ts src/gateway/server-close.test.ts --maxWorkers=1 > .artifacts/retention-final-tests.log 2>&1
+      - name: Check the test-only cleanup against the measured head
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          node scripts/check-changed.mjs --base d03f658ff64b41859d8cbc4309800cc2cf494f00 --dry-run -- src/auto-reply/reply/reply-settlement-observers.test.ts > .artifacts/retention-final-check-plan.log 2>&1
+          node scripts/check-changed.mjs --base d03f658ff64b41859d8cbc4309800cc2cf494f00 -- src/auto-reply/reply/reply-settlement-observers.test.ts > .artifacts/retention-final-checks.log 2>&1
+      - name: Sanitize final check text
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import pathlib, re
+          for file in pathlib.Path('.artifacts').glob('retention-final-*'):
+              if file.suffix not in {'.log', '.txt'}:
+                  continue
+              text = file.read_text(errors='replace')
+              text = re.sub(r'\b\d{1,3}(?:\.\d{1,3}){3}\b', '[ip-redacted]', text)
+              text = re.sub(r'\b(?:sk-|gh[opsu]_)[A-Za-z0-9_-]{12,}\b', '[credential-redacted]', text)
+              file.write_text(text)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retention-final-head-checks
+          path: .artifacts/retention-final-*
+          retention-days: 30
