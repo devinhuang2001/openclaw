@@ -91,6 +91,8 @@ for (let sample = 1; sample <= 5; sample++) {
     let ready;
     const deadline = Date.now() + 180000;
     while (Date.now() < deadline && gateway.child.exitCode === null) {
+      assert.doesNotMatch(gateway.log(), /retention-probe failed during load|Invalid config/,
+        `fixture cannot load in the shipped Gateway\n${gateway.log()}`);
       try { ready = await request("ready"); break; } catch { await delay(500); }
     }
     assert.ok(ready, `isolated shipped Gateway did not become ready\n${gateway.log()}`);

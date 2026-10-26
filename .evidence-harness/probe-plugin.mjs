@@ -4,7 +4,7 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { writeHeapSnapshot } from "node:v8";
 import path from "node:path";
 
-const { createReplyDispatcher } = await import(process.env.RETENTION_SDK_URL);
+let createReplyDispatcher;
 const abandoned = [];
 const completed = [];
 const dispatcherRefs = [];
@@ -95,6 +95,8 @@ export default {
       gatewayRuntimeScopeSurface: "trusted-operator",
       async handler(req, res) {
         try {
+          // Plugin entry loading is synchronous; native SDK import belongs to the async request.
+          createReplyDispatcher ??= (await import(process.env.RETENTION_SDK_URL)).createReplyDispatcher;
           const action = new URL(req.url, "http://localhost").searchParams.get("action");
           let result;
           if (action === "ready") {

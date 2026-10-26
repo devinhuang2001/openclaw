@@ -59,6 +59,13 @@ jobs:
         run: node --import ./scripts/tsx.mjs scripts/build-all.mts qaRuntime > ../evidence/build.log 2>&1
       - name: Isolated shipped Gateway retention proof
         run: node .evidence-harness/run-gateway.mjs sut evidence/gateway ${{ matrix.variant }}
+      - name: Publish fixture diagnostics promptly on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retention-probe-failure-${{ matrix.variant }}
+          path: evidence/gateway/**/*.log
+          retention-days: 7
       - name: Analyze synthetic heap retainer graph
         if: always()
         run: |
