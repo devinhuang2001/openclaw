@@ -1,9 +1,39 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { describe, expect, it, vi } from "vitest";
-import { getTotalPendingReplies } from "./dispatcher-registry.js";
+import { getTotalPendingReplies, registerDispatcher } from "./dispatcher-registry.js";
 import { captureReplyDispatchDeliveryOutcome, createReplyDispatcher } from "./reply-dispatcher.js";
 
 describe("reply settlement observer isolation", () => {
+  it("tracks mutable pending state without retaining a dispatcher callback", () => {
+    const initialPending = getTotalPendingReplies();
+    const state = { pending: 1 };
+    const unregister = registerDispatcher(state);
+    try {
+      expect(getTotalPendingReplies()).toBe(initialPending + 1);
+      state.pending = 3;
+      expect(getTotalPendingReplies()).toBe(initialPending + 3);
+    } finally {
+      unregister();
+    }
+    expect(getTotalPendingReplies()).toBe(initialPending);
+  });
+
+  it("tracks pending replies across registration and settlement", async () => {
+    const baseline = getTotalPendingReplies();
+    const dispatcher = createReplyDispatcher({
+      deliver: async () => ({ visibleReplySent: true }),
+    });
+    expect(getTotalPendingReplies()).toBe(baseline + 1);
+
+    dispatcher.sendFinalReply({ text: "Queued reply" });
+    expect(getTotalPendingReplies()).toBe(baseline + 2);
+    dispatcher.markComplete();
+    expect(getTotalPendingReplies()).toBe(baseline + 2);
+
+    await dispatcher.waitForIdle();
+    expect(getTotalPendingReplies()).toBe(baseline);
+  });
+
   it.each([
     { asyncObserver: false, asyncReporter: false },
     { asyncObserver: true, asyncReporter: true },

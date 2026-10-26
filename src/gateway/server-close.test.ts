@@ -918,10 +918,10 @@ describe("createGatewayCloseHandler", () => {
   it("drains each Gateway's replies independently of another Gateway's pending work", async () => {
     vi.useFakeTimers();
     let firstPending = 1;
-    let secondPending = 1;
-    const unregister = registerDispatcher(() => secondPending);
+    const secondPending = { pending: 1 };
+    const unregister = registerDispatcher(secondPending);
     const firstDeps = createGatewayCloseTestDeps({ getPendingReplyCount: () => firstPending });
-    const secondDeps = createGatewayCloseTestDeps({ getPendingReplyCount: () => secondPending });
+    const secondDeps = createGatewayCloseTestDeps({ getPendingReplyCount: () => secondPending.pending });
     const options = { restartExpectedMs: 123, drainTimeoutMs: 500 };
     const firstClose = closeGateway(firstDeps)(options);
     const secondClose = closeGateway(secondDeps)(options);
@@ -932,12 +932,12 @@ describe("createGatewayCloseHandler", () => {
       await vi.advanceTimersByTimeAsync(100);
       expect((await firstClose).warnings).not.toContain("restart-reply-drain");
       expect(secondDeps.chatRunState.clear).not.toHaveBeenCalled();
-      secondPending = 0;
+      secondPending.pending = 0;
       await vi.advanceTimersByTimeAsync(100);
       expect((await secondClose).warnings).not.toContain("restart-reply-drain");
     } finally {
       firstPending = 0;
-      secondPending = 0;
+      secondPending.pending = 0;
       unregister();
       await vi.runAllTimersAsync();
       await Promise.allSettled([firstClose, secondClose]);
