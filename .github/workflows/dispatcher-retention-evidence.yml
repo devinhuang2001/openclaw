@@ -14,7 +14,7 @@ jobs:
         include:
           - variant: baseline
             repository: openclaw/openclaw
-            revision: a53b4975e99d13a4725c64f2254ab857fb574343
+            revision: db92acff277255f64e14866d29ebcb00592822b1
           - variant: candidate
             repository: devinhuang2001/openclaw
             revision: d03f658ff64b41859d8cbc4309800cc2cf494f00
@@ -26,6 +26,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.evidence-harness/
       - uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repository }}
@@ -38,7 +41,7 @@ jobs:
           node-version: 24.22.1
       - uses: pnpm/action-setup@v4
         with:
-          version: 12.15.0
+          package_json_file: sut/package.json
           run_install: false
       - name: Runtime identity
         working-directory: sut
@@ -59,6 +62,7 @@ jobs:
       - name: Analyze synthetic heap retainer graph
         if: always()
         run: |
+          mkdir -p evidence
           if test -f evidence/gateway/sample-1/gateway.heapsnapshot; then
             node .evidence-harness/analyze-heap.mjs evidence/gateway/sample-1/gateway.heapsnapshot evidence/heap-analysis.json
           fi
@@ -106,4 +110,4 @@ jobs:
         with:
           name: retention-raw-${{ matrix.variant }}
           path: evidence/**/*.heapsnapshot.gz
-          retention-days: 7
+          retention-days: 30

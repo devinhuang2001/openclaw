@@ -2,7 +2,8 @@
 
 Written before the first experiment run. This is a controlled fault-injection workload, not a reproduction of the unidentified incident producer.
 
-Pinned baseline: `a53b4975e99d13a4725c64f2254ab857fb574343` (PR base).
+Pinned baseline: `db92acff277255f64e14866d29ebcb00592822b1` (the introduced commit's direct parent).
+The PR API's current base `a53b4975e99d13a4725c64f2254ab857fb574343` includes unrelated changes. The parent comparison isolates the four-file introduced patch; dispatcher owner sources and dependency/build configuration were also checked against the API base.
 Pinned initial candidate: `d03f658ff64b41859d8cbc4309800cc2cf494f00`.
 Runtime: Linux, exact Node `24.22.1`, pinned pnpm `12.15.0`.
 
