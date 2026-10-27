@@ -73,6 +73,8 @@ export async function reactivateCompletedSubagentSession(params: {
   task?: string;
   gatewayContextResolver?: GatewayContextResolver;
   assertCurrent?: () => void;
+  /** Session incarnation from the follow-up admission, never from the ended run. */
+  childSessionIdentity?: Pick<SessionEntry, "sessionId" | "lifecycleRevision">;
   acpSession?: {
     cfg: OpenClawConfig;
     activeSessionAgentId: string;
@@ -173,7 +175,18 @@ export async function reactivateCompletedSubagentSession(params: {
           nextRunId: runId,
           ...(continuesInterruptedTask
             ? { expected: source, preserveRequesterSettleWake: true }
-            : { preserveCompletedRun: true }),
+            : {
+                preserveCompletedRun: true,
+                ...(params.childSessionIdentity ?? params.acpSession?.sessionEntry
+                  ? {
+                      childSessionIdentity:
+                        params.childSessionIdentity ?? {
+                          sessionId: params.acpSession?.sessionEntry?.sessionId,
+                          lifecycleRevision: params.acpSession?.sessionEntry?.lifecycleRevision,
+                        },
+                    }
+                  : {}),
+              }),
           runTimeoutSeconds: source.runTimeoutSeconds ?? 0,
           ...(hasTask ? { task } : {}),
           assertCurrent: assertOriginalOwnerCurrent,
