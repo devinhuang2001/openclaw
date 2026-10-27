@@ -38,6 +38,10 @@ export async function prepareReplySubagentContinuation(
     sessionKey: turn.sessionKey,
     runId,
     ...(operatorRecovery ? {} : { task: turn.followupRun.prompt }),
+    childSessionIdentity: {
+      sessionId: entry.sessionId,
+      lifecycleRevision: entry.lifecycleRevision,
+    },
     gatewayContextResolver:
       readChannelContextGatewayContextResolver(turn.sessionCtx) ??
       getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext,
