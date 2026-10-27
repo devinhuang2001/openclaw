@@ -178,3 +178,27 @@ it.each([false, true])("accepts a replacement only when it owns the child (%s)",
     await expect(pending).rejects.toThrow("subagent follow-up owner replacement was rejected");
   }
 });
+
+it("uses the admitted post-reset child identity for a new browser follow-up", async () => {
+  mockEndedRun(endedRun());
+  const currentIdentity = { sessionId: "new-child-session", lifecycleRevision: "revision-after-reset" };
+  await expect(reactivate({ childSessionIdentity: currentIdentity })).resolves.toBe(true);
+  expect(replaceSubagentRunAfterSteerMock).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      preserveCompletedRun: true,
+      childSessionIdentity: currentIdentity,
+    }),
+  );
+});
+
+it("does not grant a new child incarnation to a paused or interrupted task", async () => {
+  mockEndedRun(endedRun());
+  const old = endedRun();
+  liveRun.mockReturnValue({ ...old, pauseReason: "sessions_yield" });
+  await expect(
+    reactivate({
+      childSessionIdentity: { sessionId: "new-child-session", lifecycleRevision: "new-revision" },
+    }),
+  ).resolves.toBe(true);
+  expect(replaceSubagentRunAfterSteerMock).not.toHaveBeenCalled();
+});
