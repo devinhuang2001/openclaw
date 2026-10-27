@@ -241,6 +241,10 @@ async function handleSessionSend(
           sessionKey: canonicalKey,
           runId: startedRunId,
           task: p.message,
+          childSessionIdentity: {
+            sessionId: entry.sessionId,
+            lifecycleRevision: entry.lifecycleRevision,
+          },
           gatewayContextResolver: options.context.resolveGatewayContext,
           assertCurrent: () => {
             if (sessionAuthorization?.assertAdmittedInputCurrent) {
