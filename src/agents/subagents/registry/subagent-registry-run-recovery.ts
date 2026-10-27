@@ -313,6 +313,8 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
     allowEndedSource?: boolean;
     /** Ordinary next turns retain the completed execution's independent delivery. */
     preserveCompletedRun?: boolean;
+    /** Current child session incarnation captured at the admitted follow-up boundary. */
+    childSessionIdentity?: SubagentRunRecord["childSessionIdentity"];
     preserveFrozenResultFallback?: boolean;
     // A follow-up that continues a paused run inherits the original requester's
     // wake credential. An operator steer intentionally drops it: the operator is
@@ -466,7 +468,10 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
                   authority: authority?.operatorAuthority,
                   agentId: childAuthority.childAgentId,
                   sessionKey: source.childSessionKey,
-                  entry: { ...childAuthority.sessionIdentity, updatedAt: now },
+                  entry: {
+                    ...(replaceParams.childSessionIdentity ?? childAuthority.sessionIdentity),
+                    updatedAt: now,
+                  },
                   sourceRunId: nextRunId,
                 })
               : undefined;
@@ -487,12 +492,14 @@ export class SubagentRecoveryManager extends SubagentWaitManager {
             task: nextTask,
             generation,
             createdAt: now,
-            ...(absorbed
-              ? {
-                  childSessionIdentity:
-                    absorbed.childSessionIdentity ?? source.childSessionIdentity,
-                }
-              : {}),
+            ...(preserveCompletedRun && replaceParams.childSessionIdentity
+              ? { childSessionIdentity: replaceParams.childSessionIdentity }
+              : absorbed
+                ? {
+                    childSessionIdentity:
+                      absorbed.childSessionIdentity ?? source.childSessionIdentity,
+                  }
+                : {}),
             sessionStartedAt,
             accumulatedRuntimeMs,
             endedReason: undefined,
